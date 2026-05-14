@@ -2,5 +2,7 @@
 .swiftpm/
 .DS_Store
 Package.resolved
-*.xcodeproj/xcuserdata/
 DerivedData/
+build/
+# xcodegen-generated, regenerated from project.yml
+*.xcodeproj/
