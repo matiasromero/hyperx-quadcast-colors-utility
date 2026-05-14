@@ -25,7 +25,7 @@ struct MenuBarContentView: View {
             Divider()
 
             HStack {
-                Button("Salir") {
+                Button("Quit") {
                     controller.stop()
                     NSApp.terminate(nil)
                 }
@@ -66,22 +66,22 @@ struct MenuBarContentView: View {
 
     private var statusText: String {
         switch controller.status {
-        case .connected: return "Conectado"
-        case .disconnected: return "No detectado"
-        case .busy: return "Ocupado"
+        case .connected: return "Connected"
+        case .disconnected: return "Not detected"
+        case .busy: return "Busy"
         case .error(let msg): return msg
         }
     }
 
     @ViewBuilder
     private var zonesSection: some View {
-        Toggle("Vincular zonas", isOn: $state.linkZones)
+        Toggle("Link zones", isOn: $state.linkZones)
             .onChange(of: state.linkZones) { _, _ in
                 state.persist()
                 scheduleApply()
             }
 
-        ColorPicker("Zona superior", selection: $pendingUpper, supportsOpacity: false)
+        ColorPicker("Upper zone", selection: $pendingUpper, supportsOpacity: false)
             .onChange(of: pendingUpper) { _, newValue in
                 state.upperColor = RGB(newValue)
                 if state.linkZones {
@@ -93,7 +93,7 @@ struct MenuBarContentView: View {
             }
 
         if !state.linkZones {
-            ColorPicker("Zona inferior", selection: $pendingLower, supportsOpacity: false)
+            ColorPicker("Lower zone", selection: $pendingLower, supportsOpacity: false)
                 .onChange(of: pendingLower) { _, newValue in
                     state.lowerColor = RGB(newValue)
                     state.persist()
@@ -105,7 +105,7 @@ struct MenuBarContentView: View {
     private var brightnessSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Brillo")
+                Text("Brightness")
                 Spacer()
                 Text("\(state.brightness)%")
                     .font(.caption.monospacedDigit())

@@ -12,13 +12,13 @@ public enum HIDError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .deviceNotFound:
-            return "HyperX Quadcast 2 S Controller no encontrado. ¿Está conectado?"
+            return "HyperX Quadcast 2 S Controller not found. Is it plugged in?"
         case .openFailed(let r):
-            return "No se pudo abrir el dispositivo HID (IOReturn 0x\(String(r, radix: 16)))."
+            return "Failed to open HID device (IOReturn 0x\(String(r, radix: 16)))."
         case .setReportFailed(let r):
-            return "Fallo al enviar paquete USB (IOReturn 0x\(String(r, radix: 16)))."
+            return "Failed to send USB packet (IOReturn 0x\(String(r, radix: 16)))."
         case .busy:
-            return "El micrófono está siendo usado por otro proceso."
+            return "Microphone is being used by another process."
         }
     }
 }
