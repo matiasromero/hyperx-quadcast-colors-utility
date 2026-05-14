@@ -4,5 +4,6 @@
 Package.resolved
 DerivedData/
 build/
+dist/
 # xcodegen-generated, regenerated from project.yml
 *.xcodeproj/

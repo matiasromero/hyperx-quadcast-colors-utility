@@ -7,6 +7,12 @@ on macOS. HyperX NGENUITY (the official software) is Windows-only.
 Animated modes (blink, cycle, wave, pulse) are not supported — the protocol
 for those modes on the 2S has not been decoded yet.
 
+## Download
+
+Grab the latest signed and notarized `.dmg` from the
+[Releases page](https://github.com/matiasromero/hyperx-quadcast-colors-utility/releases/latest),
+open it and drag **HyperX RGB** into Applications. macOS 14+ required.
+
 ## Structure
 
 | Target              | Location              | What it does                                              |
@@ -83,9 +89,80 @@ Reverse-engineered from [Ors1mer/QuadcastRGB](https://github.com/Ors1mer/Quadcas
    returns `kIOReturnTimeout`.
 3. **Open with `kIOHIDOptionsTypeSeizeDevice`** to avoid access conflicts.
 
+## Releasing
+
+Releases are built, signed (Developer ID), notarized and published by the
+GitHub Actions workflow at [.github/workflows/release.yml](.github/workflows/release.yml)
+when a `vX.Y.Z` tag is pushed. The workflow delegates the build to
+[Scripts/build-release.sh](Scripts/build-release.sh), which can also be run
+locally.
+
+### One-time setup
+
+Required only once per maintainer machine + GitHub repo. Skip if the secrets
+listed at the end are already present in the repo.
+
+**1. Developer ID Application certificate.** In
+[developer.apple.com → Certificates](https://developer.apple.com/account/resources/certificates/list),
+create a new certificate of type **Developer ID Application** and download it.
+Double-click the `.cer` to install it into Keychain Access. Then in Keychain
+Access, right-click the certificate (with its private key under it) →
+**Export 2 items…** → save as `DeveloperID.p12` and set a password — this is
+`P12_PASSWORD` below.
+
+**2. App Store Connect API key for notarization.** In
+[App Store Connect → Users and Access → Integrations → Team Keys](https://appstoreconnect.apple.com/access/integrations/api),
+create a new key with role **Developer**. Download the `.p8` (only available
+once) and note the **Key ID** and **Issuer ID**.
+
+**3. Load the secrets into GitHub.** In the repo,
+**Settings → Secrets and variables → Actions → New repository secret**, add:
+
+| Secret | Value |
+|---|---|
+| `BUILD_CERTIFICATE_BASE64` | `base64 -i DeveloperID.p12 \| pbcopy` then paste |
+| `P12_PASSWORD` | the password chosen in step 1 |
+| `KEYCHAIN_PASSWORD` | any random string (used for a throwaway CI keychain) |
+| `SIGNING_IDENTITY` | exact name of the cert, e.g. `Developer ID Application: Matias Romero (ABCDE12345)` — copy from `security find-identity -v -p codesigning` |
+| `APPLE_TEAM_ID` | 10-char Team ID, visible in the cert name and in the developer portal |
+| `APP_STORE_CONNECT_KEY_ID` | Key ID from step 2 |
+| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID from step 2 |
+| `APP_STORE_CONNECT_KEY_P8` | full text contents of the `.p8` file (multiline) |
+
+### Cutting a release
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow archives, signs, builds the DMG, notarizes via `notarytool` and
+staples the ticket, then publishes a GitHub Release with the `.dmg` attached.
+Auto-generated release notes are based on commits since the previous tag.
+
+To sanity-check a release was correctly notarized:
+
+```bash
+spctl -a -vv /Applications/HyperXRGB.app          # → "source=Notarized Developer ID"
+xcrun stapler validate /Applications/HyperXRGB.app # → "The validate action worked!"
+```
+
+### Local dry-run (no Developer ID needed)
+
+The same script can produce an unsigned DMG locally for testing the packaging
+end-to-end before tagging:
+
+```bash
+brew install create-dmg
+SIGNING_IDENTITY="-" Scripts/build-release.sh 0.1.0-dev
+# → dist/HyperXRGB-0.1.0-dev.dmg
+```
+
+Unsigned DMGs trigger a Gatekeeper warning when opened on another Mac — that's
+expected; only use them for local testing.
+
 ## Out of scope
 
 - Animated modes (require USB capture of NGENUITY on a Windows VM).
 - Other HyperX mics (original Quadcast S, Duocast).
-- Signed/notarized distribution.
 - Auto-update, telemetry.
