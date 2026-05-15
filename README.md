@@ -99,35 +99,125 @@ locally.
 
 ### One-time setup
 
-Required only once per maintainer machine + GitHub repo. Skip if the secrets
-listed at the end are already present in the repo.
+Required only once per maintainer machine + GitHub repo. Skip parts that
+are already done.
 
-**1. Developer ID Application certificate.** In
-[developer.apple.com → Certificates](https://developer.apple.com/account/resources/certificates/list),
-create a new certificate of type **Developer ID Application** and download it.
-Double-click the `.cer` to install it into Keychain Access. Then in Keychain
-Access, right-click the certificate (with its private key under it) →
-**Export 2 items…** → save as `DeveloperID.p12` and set a password — this is
-`P12_PASSWORD` below.
+#### A. Create the Developer ID Application certificate
 
-**2. App Store Connect API key for notarization.** In
-[App Store Connect → Users and Access → Integrations → Team Keys](https://appstoreconnect.apple.com/access/integrations/api),
-create a new key with role **Developer**. Download the `.p8` (only available
-once) and note the **Key ID** and **Issuer ID**.
+1. **Generate a Certificate Signing Request (CSR) on your Mac.** Open
+   **Keychain Access** → menu **Keychain Access → Certificate Assistant →
+   Request a Certificate from a Certificate Authority**. Fill in your email
+   and name, leave **CA Email Address** empty, select **Saved to disk**, and
+   save the `.certSigningRequest` somewhere temporary.
+2. **Upload the CSR to Apple.** Go to
+   [developer.apple.com/account/resources/certificates/list](https://developer.apple.com/account/resources/certificates/list)
+   → click **+** → select **Developer ID Application** → **Continue** →
+   upload the `.certSigningRequest` → **Continue** → **Download**. Double-click
+   the downloaded `.cer` to install it into the `login` keychain.
+3. **Verify the cert is installed and grab its identity string:**
 
-**3. Load the secrets into GitHub.** In the repo,
-**Settings → Secrets and variables → Actions → New repository secret**, add:
+   ```bash
+   security find-identity -v -p codesigning
+   ```
 
-| Secret | Value |
+   You should see a line like:
+
+   ```
+   1) ABCDEF1234567890… "Developer ID Application: Matias Romero (ABCDE12345)"
+   ```
+
+   - The full quoted string is the value for the `SIGNING_IDENTITY` secret.
+   - The 10-character code in parentheses is your `APPLE_TEAM_ID`.
+
+#### B. Export the certificate as `.p12`
+
+1. In **Keychain Access**, select the **login** keychain on the left and the
+   **My Certificates** category. Click the disclosure triangle next to
+   *Developer ID Application: …* to confirm it has a private key nested
+   underneath — if it doesn't, the export won't work and you need to redo
+   step A from the same Mac that generated the CSR.
+2. Right-click the certificate → **Export "Developer ID Application: …"** →
+   **File Format: Personal Information Exchange (.p12)** → save as
+   `DeveloperID.p12` and set a strong password (this becomes `P12_PASSWORD`).
+3. Encode it for the GitHub secret:
+
+   ```bash
+   base64 -i DeveloperID.p12 | pbcopy
+   ```
+
+   Your clipboard now holds the value for `BUILD_CERTIFICATE_BASE64`.
+
+#### C. Create the App Store Connect API key (for notarization)
+
+1. Go to [appstoreconnect.apple.com](https://appstoreconnect.apple.com) →
+   **Users and Access** → tab **Integrations** → sub-tab **Team Keys**
+   (not "Individual Keys").
+2. Click **+** → name it e.g. `Notarization CI` → Access **Developer** →
+   **Generate**.
+3. **Download the `.p8` immediately** — Apple only lets you do this once.
+   Keep it somewhere safe; you'll paste its contents into a GitHub secret.
+4. On the same page, note:
+   - **Key ID** — 10-character code in the table row.
+   - **Issuer ID** — the UUID-style string at the top of the keys section.
+
+#### D. Load the eight secrets into GitHub
+
+In the repo: **Settings → Secrets and variables → Actions → New repository
+secret**. Add each of these:
+
+| Secret | Where it comes from |
 |---|---|
-| `BUILD_CERTIFICATE_BASE64` | `base64 -i DeveloperID.p12 \| pbcopy` then paste |
-| `P12_PASSWORD` | the password chosen in step 1 |
-| `KEYCHAIN_PASSWORD` | any random string (used for a throwaway CI keychain) |
-| `SIGNING_IDENTITY` | exact name of the cert, e.g. `Developer ID Application: Matias Romero (ABCDE12345)` — copy from `security find-identity -v -p codesigning` |
-| `APPLE_TEAM_ID` | 10-char Team ID, visible in the cert name and in the developer portal |
-| `APP_STORE_CONNECT_KEY_ID` | Key ID from step 2 |
-| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID from step 2 |
-| `APP_STORE_CONNECT_KEY_P8` | full text contents of the `.p8` file (multiline) |
+| `BUILD_CERTIFICATE_BASE64` | clipboard from step B.3 |
+| `P12_PASSWORD` | the password you set in step B.2 |
+| `KEYCHAIN_PASSWORD` | any random string — e.g. `openssl rand -base64 24` |
+| `SIGNING_IDENTITY` | full quoted string from step A.3, e.g. `Developer ID Application: Matias Romero (ABCDE12345)` |
+| `APPLE_TEAM_ID` | the 10-char code in parentheses from step A.3 |
+| `APP_STORE_CONNECT_KEY_ID` | Key ID from step C.4 |
+| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID from step C.4 |
+| `APP_STORE_CONNECT_KEY_P8` | full text of the `.p8` from step C.3, including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines (multi-line) |
+
+### Testing before the first release
+
+Before tagging `v0.1.0` it pays off to validate locally, then with a throwaway
+tag, so CI failures don't end up in your real release history.
+
+**1. Local signed + notarized dry-run.** Run the full pipeline on your own
+Mac with the exact same credentials CI will use:
+
+```bash
+brew install create-dmg
+export SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_TEAM_ID="TEAMID"
+export APP_STORE_CONNECT_KEY_ID="KEYID"
+export APP_STORE_CONNECT_ISSUER_ID="ISSUERID"
+export APP_STORE_CONNECT_KEY_P8="$(cat ~/Downloads/AuthKey_KEYID.p8)"
+Scripts/build-release.sh 0.1.0-test
+```
+
+When it finishes with `Built and notarized: dist/HyperXRGB-0.1.0-test.dmg`,
+mount the DMG, drag the app into Applications, and open it. Gatekeeper should
+let it through without warnings.
+
+**2. End-to-end test of the GitHub Actions workflow.** Push a throwaway
+release-candidate tag:
+
+```bash
+git tag v0.1.0-rc1
+git push origin v0.1.0-rc1
+```
+
+Watch **Actions → Release** in GitHub. If it reaches *Create GitHub Release*,
+download the DMG from the published release and install it (ideally on a
+different Mac, or after `xattr -d com.apple.quarantine` to strip the
+"downloaded from internet" flag locally). If anything goes wrong, clean up:
+
+```bash
+gh release delete v0.1.0-rc1 -y
+git push --delete origin v0.1.0-rc1
+git tag -d v0.1.0-rc1
+```
+
+Once the dry-run is green, you're ready to tag the real release.
 
 ### Cutting a release
 
