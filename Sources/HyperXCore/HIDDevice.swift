@@ -100,8 +100,17 @@ public final class HIDDevice {
             logger.info("Skipping (need both input and output >= 64 bytes)")
             return
         }
+        // The QuadCast 2 S exposes multiple 64-byte HID collections at the same VID/PID:
+        // one on the standard Generic Desktop page (0x01) for audio control, and one
+        // on a vendor-defined page (0xff00–0xffff) that actually accepts the RGB
+        // packets. Picking the Generic Desktop one makes IOHIDDeviceSetReport fail
+        // with kIOReturnNotOpen (0xe00002cd), so filter to vendor-defined.
+        guard (0xff00...0xffff).contains(usagePage) else {
+            logger.info("Skipping (need vendor-defined usage page, got 0x\(String(usagePage, radix: 16), privacy: .public))")
+            return
+        }
         if self.device != nil {
-            logger.info("Additional matching interface ignored")
+            logger.info("Additional matching interface ignored (already opened one)")
             return
         }
         let open = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
