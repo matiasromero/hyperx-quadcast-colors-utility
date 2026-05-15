@@ -72,7 +72,7 @@ public final class HIDDevice {
         IOHIDManagerScheduleWithRunLoop(manager, CFRunLoopGetMain(), CFRunLoopMode.defaultMode.rawValue)
         let openResult = IOHIDManagerOpen(manager, IOOptionBits(kIOHIDOptionsTypeNone))
         if openResult != kIOReturnSuccess {
-            logger.error("IOHIDManagerOpen failed: \(String(format: "0x%x", openResult))")
+            logger.error("IOHIDManagerOpen failed: \(String(format: "0x%x", openResult), privacy: .public)")
         }
         self.manager = manager
     }
@@ -94,7 +94,8 @@ public final class HIDDevice {
         let outputSize = (IOHIDDeviceGetProperty(device, kIOHIDMaxOutputReportSizeKey as CFString) as? Int) ?? 0
         let inputSize = (IOHIDDeviceGetProperty(device, kIOHIDMaxInputReportSizeKey as CFString) as? Int) ?? 0
         let usagePage = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsagePageKey as CFString) as? Int) ?? 0
-        logger.info("Candidate HID interface: outSize=\(outputSize) inSize=\(inputSize) usagePage=0x\(String(usagePage, radix: 16))")
+        let usage = (IOHIDDeviceGetProperty(device, kIOHIDPrimaryUsageKey as CFString) as? Int) ?? 0
+        logger.info("Candidate HID interface: outSize=\(outputSize, privacy: .public) inSize=\(inputSize, privacy: .public) usagePage=0x\(String(usagePage, radix: 16), privacy: .public) usage=0x\(String(usage, radix: 16), privacy: .public)")
         guard outputSize >= 64 && inputSize >= 64 else {
             logger.info("Skipping (need both input and output >= 64 bytes)")
             return
@@ -105,7 +106,7 @@ public final class HIDDevice {
         }
         let open = IOHIDDeviceOpen(device, IOOptionBits(kIOHIDOptionsTypeSeizeDevice))
         guard open == kIOReturnSuccess else {
-            logger.error("IOHIDDeviceOpen failed: \(String(format: "0x%x", open))")
+            logger.error("IOHIDDeviceOpen failed: \(String(format: "0x%x", open), privacy: .public)")
             return
         }
         logger.info("Device opened (seized)")
@@ -182,7 +183,7 @@ public final class HIDDevice {
             )
         }
         if result != kIOReturnSuccess {
-            logger.error("IOHIDDeviceSetReport failed: \(String(format: "0x%x", result))")
+            logger.error("IOHIDDeviceSetReport failed: \(String(format: "0x%x", result), privacy: .public)")
             if result == kIOReturnBusy || result == kIOReturnExclusiveAccess {
                 throw HIDError.busy
             }
