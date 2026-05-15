@@ -28,21 +28,42 @@ jobs:
           BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
           KC="$RUNNER_TEMP/build.keychain-db"
           CERT_PATH="$RUNNER_TEMP/cert.p12"
+          G2_PATH="$RUNNER_TEMP/DeveloperIDG2CA.cer"
 
           echo "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$G2_PATH"
 
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+
+          # Apple intermediate so the chain validates inside our keychain
+          security import "$G2_PATH" -k "$KC" -T /usr/bin/codesign
+
+          # Developer ID cert + private key
           security import "$CERT_PATH" -k "$KC" -P "$P12_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/security
+            -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+
+          # Make new keychain the default and primary in the search list
+          security default-keychain -s "$KC"
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KC"
+
+          echo "=== identities in build.keychain ==="
+          security find-identity -v -p codesigning "$KC"
+          echo "=== identities in default search list ==="
+          security find-identity -v -p codesigning
+          echo "=== expected SIGNING_IDENTITY ==="
+          echo "$SIGNING_IDENTITY"
+          echo "=== expected APPLE_TEAM_ID ==="
+          echo "$APPLE_TEAM_ID"
 
           rm -f "$CERT_PATH"
 
