@@ -38,43 +38,34 @@ cd "$REPO_ROOT"
 echo "==> xcodegen generate"
 xcodegen generate
 
-echo "==> xcodebuild archive ($VERSION build $BUILD_NUMBER)"
-if [[ "$SIGNING_IDENTITY" == "" || "$SIGNING_IDENTITY" == "-" ]]; then
-  echo "    (ad-hoc / unsigned build)"
-  xcodebuild archive \
-    -project HyperXRGB.xcodeproj \
-    -scheme HyperXRGB \
-    -configuration Release \
-    -archivePath "$ARCHIVE" \
-    MARKETING_VERSION="$VERSION" \
-    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-    CODE_SIGN_STYLE=Manual \
-    CODE_SIGN_IDENTITY="-"
-else
-  : "${APPLE_TEAM_ID:?APPLE_TEAM_ID required when signing}"
-  xcodebuild archive \
-    -project HyperXRGB.xcodeproj \
-    -scheme HyperXRGB \
-    -configuration Release \
-    -archivePath "$ARCHIVE" \
-    MARKETING_VERSION="$VERSION" \
-    CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-    CODE_SIGN_STYLE=Manual \
-    CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
-    DEVELOPMENT_TEAM="$APPLE_TEAM_ID"
-fi
+echo "==> xcodebuild archive ad-hoc ($VERSION build $BUILD_NUMBER)"
+# Always archive ad-hoc. xcodebuild's manual signing lookup is unreliable in
+# CI (it can fail to match cert+team even when find-identity sees the cert);
+# we re-sign with codesign directly below when a real identity is provided.
+xcodebuild archive \
+  -project HyperXRGB.xcodeproj \
+  -scheme HyperXRGB \
+  -configuration Release \
+  -archivePath "$ARCHIVE" \
+  MARKETING_VERSION="$VERSION" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+  CODE_SIGN_STYLE=Manual \
+  CODE_SIGN_IDENTITY="-"
 
-echo "==> xcodebuild -exportArchive"
-if [[ "$SIGNING_IDENTITY" == "" || "$SIGNING_IDENTITY" == "-" ]]; then
-  # No signed export possible without a Developer ID; copy the .app straight out.
-  mkdir -p "$EXPORT_DIR"
-  cp -R "$ARCHIVE/Products/Applications/HyperXRGB.app" "$EXPORT_DIR/"
-else
-  sed "s/__TEAM_ID__/$APPLE_TEAM_ID/" Scripts/ExportOptions.plist > "$DIST/ExportOptions.plist"
-  xcodebuild -exportArchive \
-    -archivePath "$ARCHIVE" \
-    -exportPath "$EXPORT_DIR" \
-    -exportOptionsPlist "$DIST/ExportOptions.plist"
+echo "==> extract .app from archive"
+mkdir -p "$EXPORT_DIR"
+cp -R "$ARCHIVE/Products/Applications/HyperXRGB.app" "$EXPORT_DIR/HyperXRGB.app"
+
+if [[ "$SIGNING_IDENTITY" != "" && "$SIGNING_IDENTITY" != "-" ]]; then
+  : "${APPLE_TEAM_ID:?APPLE_TEAM_ID required when signing}"
+  echo "==> codesign .app with Developer ID"
+  codesign --force --deep \
+    --sign "$SIGNING_IDENTITY" \
+    --options runtime \
+    --entitlements "$REPO_ROOT/App/HyperXRGB/HyperXRGB.entitlements" \
+    --timestamp \
+    "$EXPORT_DIR/HyperXRGB.app"
+  codesign --verify --deep --strict --verbose=2 "$EXPORT_DIR/HyperXRGB.app"
 fi
 
 echo "==> create-dmg"
