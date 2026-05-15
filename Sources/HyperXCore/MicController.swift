@@ -19,6 +19,7 @@ public final class MicController: ObservableObject {
     private var currentUpper: RGB = .white
     private var currentLower: RGB = .white
     private var currentBrightness: Int = 100
+    private var started = false
 
     public init() {
         self.device = HIDDevice(
@@ -28,6 +29,14 @@ public final class MicController: ObservableObject {
     }
 
     public func start() {
+        // .onAppear in the menu bar popover fires every time the popover is
+        // opened, so this can be called many times during one app session.
+        // Re-running device.start() reopens IOHIDManager and invalidates the
+        // existing IOHIDDevice handle, causing all subsequent IOHIDDeviceSetReport
+        // calls to fail with kIOReturnNotOpen (0xe00002cd). Make start() a noop
+        // after the first successful call.
+        guard !started else { return }
+        started = true
         device.onConnectionChange = { [weak self] connected in
             Task { @MainActor in
                 guard let self else { return }
@@ -44,6 +53,8 @@ public final class MicController: ObservableObject {
     }
 
     public func stop() {
+        guard started else { return }
+        started = false
         refreshLoop?.stop()
         refreshLoop = nil
         device.stop()
