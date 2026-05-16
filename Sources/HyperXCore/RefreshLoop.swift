@@ -53,7 +53,7 @@ final class RefreshLoop {
                 try sendAndDrain(packet)
             }
         } catch {
-            logger.error("Refresh tick failed: \(error.localizedDescription)")
+            logger.error("Refresh tick failed: \(error.localizedDescription, privacy: .public)")
             onError?(error)
         }
     }
