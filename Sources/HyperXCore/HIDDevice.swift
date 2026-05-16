@@ -100,13 +100,20 @@ public final class HIDDevice {
             logger.info("Skipping (need both input and output >= 64 bytes)")
             return
         }
-        // The QuadCast 2 S exposes multiple 64-byte HID collections at the same VID/PID:
-        // one on the standard Generic Desktop page (0x01) for audio control, and one
-        // on a vendor-defined page (0xff00–0xffff) that actually accepts the RGB
-        // packets. Picking the Generic Desktop one makes IOHIDDeviceSetReport fail
-        // with kIOReturnNotOpen (0xe00002cd), so filter to vendor-defined.
-        guard (0xff00...0xffff).contains(usagePage) else {
-            logger.info("Skipping (need vendor-defined usage page, got 0x\(String(usagePage, radix: 16), privacy: .public))")
+        // The QuadCast 2 S Controller (VID/PID 0x03f0:0x02b5) exposes THREE HID
+        // collections: a 1-byte vendor collection (usagePage=0xff59) that's too
+        // small and gets skipped above; a 64-byte Generic Desktop collection
+        // (usagePage=0x01, usage=0x02) where the firmware processes RGB packets
+        // and ACKs back with `ff 01 .. 44 01` (header) and `45 02 NN ..` (data);
+        // and another 64-byte vendor-defined collection (usagePage=0xff13) that
+        // opens successfully but the firmware silently drops everything sent.
+        //
+        // IOHIDManager enumerates the two 64-byte collections in non-deterministic
+        // order, so match the working one explicitly. An earlier commit filtered
+        // to 0xff00–0xffff thinking the vendor page was the right one — that
+        // broke RGB control entirely.
+        guard usagePage == 0x01 else {
+            logger.info("Skipping (need Generic Desktop page 0x01, got 0x\(String(usagePage, radix: 16), privacy: .public))")
             return
         }
         if self.device != nil {
@@ -118,7 +125,7 @@ public final class HIDDevice {
             logger.error("IOHIDDeviceOpen failed: \(String(format: "0x%x", open), privacy: .public)")
             return
         }
-        logger.info("Device opened (seized)")
+        logger.info("Device opened (seized) usagePage=0x\(String(usagePage, radix: 16), privacy: .public)")
 
         inputBuffer.withUnsafeMutableBufferPointer { buf in
             let opaqueSelf = Unmanaged.passUnretained(self).toOpaque()
