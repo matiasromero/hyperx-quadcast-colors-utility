@@ -2,9 +2,10 @@ import Foundation
 import HyperXCore
 import HyperXProtocol
 
-// Standalone CLI probe: connects to the mic, sends one full solid-color cycle,
-// keeps the loop alive for ~3 seconds, then exits. Useful to validate that
-// IOKit HID Manager can talk to the device without bringing up the SwiftUI app.
+// Standalone CLI probe: connects to the mic, holds a solid colour for ~15
+// seconds by re-sending the full 7-packet cycle every 100 ms, then exits.
+// Useful to validate IOKit HID Manager can talk to the device without
+// bringing up the SwiftUI app.
 
 let args = CommandLine.arguments
 let hex: String
@@ -32,7 +33,7 @@ guard let color = parseHex(hex) else {
     exit(2)
 }
 
-print("HyperXRGB HID probe — color #\(hex) for 3s")
+print("HyperXRGB HID probe — color #\(hex) for ~15s")
 print("Looking for VID 0x\(String(QC2SProtocol.vendorID, radix: 16)) PID 0x\(String(QC2SProtocol.productID, radix: 16))...")
 
 let device = HIDDevice(
@@ -52,15 +53,15 @@ device.onInputReport = { data in
     let prefix = data.prefix(16).map { String(format: "%02x", $0) }.joined(separator: " ")
     print("Input report (\(data.count) bytes): \(prefix)...")
 }
-
-device.start()
-
 device.onDeviceOpened = { hidDevice in
     let outSize = (IOHIDDeviceGetProperty(hidDevice, kIOHIDMaxOutputReportSizeKey as CFString) as? Int) ?? -1
     let inSize = (IOHIDDeviceGetProperty(hidDevice, kIOHIDMaxInputReportSizeKey as CFString) as? Int) ?? -1
     let usagePage = (IOHIDDeviceGetProperty(hidDevice, kIOHIDPrimaryUsagePageKey as CFString) as? Int) ?? -1
-    print("Opened device: outputSize=\(outSize) inputSize=\(inSize) usagePage=0x\(String(usagePage, radix: 16))")
+    let usage = (IOHIDDeviceGetProperty(hidDevice, kIOHIDPrimaryUsageKey as CFString) as? Int) ?? -1
+    print("Opened device: outputSize=\(outSize) inputSize=\(inSize) usagePage=0x\(String(usagePage, radix: 16)) usage=0x\(String(usage, radix: 16))")
 }
+
+device.start()
 
 DispatchQueue.global().async {
     if connectedSem.wait(timeout: .now() + 3) == .timedOut {
@@ -83,19 +84,27 @@ DispatchQueue.global().async {
     do {
         let header = QC2SProtocol.buildHeaderPacket()
         let packets = QC2SProtocol.buildSolidPackets(upper: color, lower: color)
-        // Loop for ~5 seconds so the user has time to look at the mic.
-        let endTime = Date().addingTimeInterval(5.0)
+        // Loop for ~15 seconds so the user has time to look at the mic.
+        // Skip the per-packet ACK wait — the firmware doesn't always send one
+        // and waiting 500ms × 7 packets per cycle starves the refresh cadence
+        // (firmware reverts to default if cycles arrive farther apart than ~150ms).
+        let endTime = Date().addingTimeInterval(15.0)
         var cycle = 0
+        var totalSent = 0
         while Date() < endTime {
-            print("Cycle \(cycle)")
-            try sendAndWait(header, label: "header")
-            for (i, p) in packets.enumerated() {
-                try sendAndWait(p, label: "packet \(i)")
+            device.drainPendingResponses()
+            try device.sendReport(header)
+            for p in packets {
+                try device.sendReport(p)
+                totalSent += 1
             }
             cycle += 1
+            if cycle % 10 == 0 {
+                print("Cycle \(cycle) — sent \(totalSent) data packets so far")
+            }
             Thread.sleep(forTimeInterval: 0.1)
         }
-        print("Done. Exiting.")
+        print("Done. Total cycles=\(cycle), total data packets sent=\(totalSent). Exiting.")
         exit(0)
     } catch {
         print("ERROR: \(error)")
