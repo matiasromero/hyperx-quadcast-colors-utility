@@ -93,9 +93,9 @@ swift test                      # 13 unit tests (Swift Testing)
 With the mic plugged in:
 
 ```bash
-swift run HIDProbe ff0000   # red, ~5s
+swift run HIDProbe ff0000   # red, ~15s
 swift run HIDProbe 00ff00   # green
-swift run HIDProbe 0080ff   # cyan
+swift run HIDProbe 0080ff   # sky blue
 ```
 
 The LED falls back to its default animation when the command ends — the
@@ -118,15 +118,29 @@ Reverse-engineered from [Ors1mer/QuadcastRGB](https://github.com/Ors1mer/Quadcas
 
 ### Non-obvious gotchas (vs. the reference C lib)
 
-1. **Filter by report size.** The "Controller" exposes multiple HID
-   collections with the same VID/PID. You must only open the one with
-   `MaxOutputReportSize >= 64` AND `MaxInputReportSize >= 64`. The others
-   (output size 1) won't accept 64-byte packets.
+1. **Match the Generic Desktop collection, not the vendor-defined one.**
+   The Controller exposes three HID collections at the same VID/PID: a
+   1-byte vendor collection (`usagePage=0xff59`, too small), a 64-byte
+   **Generic Desktop** collection (`usagePage=0x01`, `usage=0x02`), and a
+   64-byte vendor-defined collection (`usagePage=0xff13`). Only the Generic
+   Desktop one actually drives the LEDs — the firmware silently drops
+   everything sent to `0xff13`, and Logitech Options+ (`logioptionsplus_agent`)
+   frequently has that one seized anyway. `IOHIDManager` enumerates the
+   two 64-byte collections in non-deterministic order, so filter explicitly
+   by `usagePage == 0x01`. Filtering to the vendor range `0xff00–0xffff`
+   (which seems intuitive for a "vendor-specific" protocol) breaks RGB
+   control entirely.
 2. **Drain input responses between each SetReport.** The firmware accumulates
    responses and stops accepting OUTs if they aren't read. Without
    `drainPendingResponses()` before each send, the second cycle already
    returns `kIOReturnTimeout`.
 3. **Open with `kIOHIDOptionsTypeSeizeDevice`** to avoid access conflicts.
+   The Generic Desktop collection isn't held by any system process by
+   default, so the seize succeeds and the firmware accepts the packets.
+4. **Activate the app on popover open** if you're inside an `LSUIElement` /
+   `.accessory` SwiftUI app: `NSColorPanel` won't appear without a key
+   window, so the `ColorPicker` swatch is a silent no-op until you call
+   `NSApp.activate(ignoringOtherApps: true)`.
 
 ## Releasing
 
