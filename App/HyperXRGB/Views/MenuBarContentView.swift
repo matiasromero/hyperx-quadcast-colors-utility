@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import HyperXCore
 import HyperXProtocol
 
@@ -39,6 +40,12 @@ struct MenuBarContentView: View {
         .padding(16)
         .frame(width: 280)
         .onAppear {
+            // LSUIElement/accessory apps can't open NSColorPanel without first
+            // being activated. SwiftUI's ColorPicker calls makeKeyAndOrderFront
+            // but the panel never appears because the app has no key window.
+            // Activating on popover open makes the picker work; the app stays
+            // accessory the rest of the time.
+            NSApp.activate(ignoringOtherApps: true)
             pendingUpper = state.upperColor.asColor
             pendingLower = state.lowerColor.asColor
         }
