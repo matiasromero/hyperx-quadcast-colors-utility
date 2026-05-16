@@ -7,3 +7,7 @@ build/
 dist/
 # xcodegen-generated, regenerated from project.yml
 *.xcodeproj/
+
+# Source PNG for AppIcon.icns. Kept locally as the regeneration source
+# but not tracked (the .icns is the committed artefact).
+/logo.png
