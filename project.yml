@@ -33,15 +33,16 @@ targets:
       properties:
         CFBundleName: HyperXRGB
         CFBundleDisplayName: HyperX RGB
-        CFBundleShortVersionString: "0.1.1"
+        CFBundleShortVersionString: "0.1.2"
         CFBundleVersion: "1"
+        CFBundleIconFile: AppIcon
         LSUIElement: true
         LSMinimumSystemVersion: "14.0"
         NSHumanReadableCopyright: ""
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.matiasromero.HyperXRGB
-        MARKETING_VERSION: "0.1.1"
+        MARKETING_VERSION: "0.1.2"
         CURRENT_PROJECT_VERSION: "1"
         ENABLE_HARDENED_RUNTIME: YES
         COMBINE_HIDPI_IMAGES: YES
